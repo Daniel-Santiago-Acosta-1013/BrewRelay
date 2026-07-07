@@ -11,8 +11,8 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "kafka_connect_connector_task_metrics{connector=\"brewrelay-outbox-connector\"}",
-          "legendFormat": "task {{task}}",
+          "expr": "kafka_connect_connect_worker_metrics_connector_running_task_count{connector=\"brewrelay-outbox-connector\"}",
+          "legendFormat": "tasks running",
           "refId": "A"
         }
       ],
@@ -54,16 +54,14 @@
     },
     {
       "type": "stat",
-      "title": "Consumer Lag",
+      "title": "LogEndOffset coffee.orders",
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(kafka_server_consumer_lag_max{group=\"barista-worker\"})", "refId": "A" }
+        { "expr": "kafka_log_log_value{name=\"LogEndOffset\",topic=\"coffee.orders\"}", "legendFormat": "offset", "refId": "A" }
       ],
       "fieldConfig": {
-        "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] }
-        }
+        "defaults": { "unit": "short" }
       },
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
@@ -74,8 +72,8 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(kafka_server_brokertopicmessagesinpersec_count{topic=\"coffee.orders\"}[1m])",
-          "legendFormat": "in/s",
+          "expr": "rate(kafka_server_brokertopicmetrics_count{name=\"MessagesInPerSec\",topic=\"coffee.orders\"}[1m])",
+          "legendFormat": "msgs/s",
           "refId": "A"
         }
       ],
@@ -83,12 +81,12 @@
     },
     {
       "type": "timeseries",
-      "title": "Debezium — records producidos por el conector",
+      "title": "Debezium — records escritos por el conector",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(kafka_connect_source_task_metrics{connector=\"brewrelay-outbox-connector\"}[1m])",
+          "expr": "kafka_connect_source_task_metrics_source_record_write_rate{connector=\"brewrelay-outbox-connector\"}",
           "legendFormat": "records/s",
           "refId": "A"
         }
@@ -118,13 +116,12 @@
     },
     {
       "type": "stat",
-      "title": "Replication slot lag (Postgres SQL)",
+      "title": "Replication slot lag",
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 21 },
       "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "rawQuery": true,
-          "query": "SELECT now() as time, pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::float as lag_bytes FROM pg_replication_slots WHERE slot_name = 'brewrelay_slot'",
+          "rawSql": "SELECT now() as time, pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::float as lag_bytes FROM pg_replication_slots WHERE slot_name = 'brewrelay_slot'",
           "refId": "A",
           "format": "time_series"
         }
@@ -139,13 +136,12 @@
     },
     {
       "type": "stat",
-      "title": "Conexiones PostgreSQL (SQL)",
+      "title": "Conexiones PostgreSQL",
       "gridPos": { "h": 6, "w": 8, "x": 8, "y": 21 },
       "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "rawQuery": true,
-          "query": "SELECT now() as time, count(*)::float as connections FROM pg_stat_activity WHERE datname = 'brewrelay'",
+          "rawSql": "SELECT now() as time, count(*)::float as connections FROM pg_stat_activity WHERE datname = 'brewrelay'",
           "refId": "A",
           "format": "time_series"
         }
@@ -160,13 +156,12 @@
     },
     {
       "type": "stat",
-      "title": "Tamaño DB (SQL)",
+      "title": "Tamaño DB",
       "gridPos": { "h": 6, "w": 8, "x": 16, "y": 21 },
       "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "rawQuery": true,
-          "query": "SELECT now() as time, pg_database_size('brewrelay')::float as size_bytes",
+          "rawSql": "SELECT now() as time, pg_database_size('brewrelay')::float as size_bytes",
           "refId": "A",
           "format": "time_series"
         }
@@ -178,27 +173,27 @@
     },
     {
       "type": "table",
-      "title": "Pedidos recientes (Postgres)",
+      "title": "Pedidos recientes",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 27 },
       "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "rawQuery": true,
-          "query": "SELECT customer_name AS \"Cliente\", drink AS \"Bebida\", size AS \"Tamaño\", quantity AS \"Qty\", total AS \"Total\", status AS \"Estado\", created_at AS \"Creado\" FROM coffee_orders ORDER BY created_at DESC LIMIT 20",
-          "refId": "A"
+          "rawSql": "SELECT customer_name AS \"Cliente\", drink AS \"Bebida\", size AS \"Tamaño\", quantity AS \"Qty\", total AS \"Total\", status AS \"Estado\", created_at AS \"Creado\" FROM coffee_orders ORDER BY created_at DESC LIMIT 20",
+          "refId": "A",
+          "format": "table"
         }
       ]
     },
     {
       "type": "table",
-      "title": "Notificaciones del barista (Postgres)",
+      "title": "Notificaciones del barista",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 37 },
       "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "rawQuery": true,
-          "query": "SELECT n.message AS \"Mensaje\", o.drink AS \"Bebida\", o.size AS \"Tamaño\", o.quantity AS \"Qty\", n.received_at AS \"Recibido\" FROM barista_notifications n JOIN coffee_orders o ON o.id = n.order_id ORDER BY n.received_at DESC LIMIT 20",
-          "refId": "A"
+          "rawSql": "SELECT n.message AS \"Mensaje\", o.drink AS \"Bebida\", o.size AS \"Tamaño\", o.quantity AS \"Qty\", n.received_at AS \"Recibido\" FROM barista_notifications n JOIN coffee_orders o ON o.id = n.order_id ORDER BY n.received_at DESC LIMIT 20",
+          "refId": "A",
+          "format": "table"
         }
       ]
     }
