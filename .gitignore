@@ -1,0 +1,103 @@
+# ===========================================
+# BrewRelay — .gitignore
+# ===========================================
+
+# -------------------------------------------
+# OS / Editor
+# -------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -------------------------------------------
+# Logs
+# -------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun-debug.log*
+
+# -------------------------------------------
+# Environment / Secrets
+# -------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+*.pem
+*.key
+*.crt
+secrets/
+
+# -------------------------------------------
+# Node.js / Bun (frontend)
+# -------------------------------------------
+node_modules/
+dist/
+build/
+.cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# -------------------------------------------
+# Go (api / worker)
+# -------------------------------------------
+# Binarios compilados (nombres coincidentes con los módulos)
+/apps/api/api
+/apps/worker/worker
+# Si generan otros nombres genéricos:
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# -------------------------------------------
+# Terraform / Terragrunt (infra)
+# -------------------------------------------
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*.backup
+*.tfstate.backup
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!backend.hcl.example
+terragrunt-debug-info.log
+
+# -------------------------------------------
+# Docker
+# -------------------------------------------
+*.pid
+*.seed
+*.db
+
+# -------------------------------------------
+# Coverage / Test reports
+# -------------------------------------------
+coverage/
+.nyc_output/
+junit.xml
+
+# -------------------------------------------
+# Misc
+# -------------------------------------------
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig

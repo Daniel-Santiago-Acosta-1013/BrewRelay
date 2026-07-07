@@ -1,0 +1,186 @@
+name: brewrelay
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: brewrelay-postgres
+    environment:
+      POSTGRES_USER: brewrelay
+      POSTGRES_PASSWORD: brewrelay
+      POSTGRES_DB: brewrelay
+      # Replicación lógica para Debezium
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brewrelay -d brewrelay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: brewrelay-kafka
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: "PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  kafka-connect:
+    image: debezium/connect:2.7.3.Final
+    container_name: brewrelay-kafka-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: "kafka:29092"
+      GROUP_ID: "brewrelay-connect"
+      CONFIG_STORAGE_TOPIC: "brewrelay-connect-configs"
+      OFFSET_STORAGE_TOPIC: "brewrelay-connect-offsets"
+      STATUS_STORAGE_TOPIC: "brewrelay-connect-status"
+      KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  debezium-register:
+    image: curlimages/curl:8.10.1
+    container_name: brewrelay-debezium-register
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./docker/debezium/connector.json:/connector.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        echo ">> Esperando a Kafka Connect en http://kafka-connect:8083 ..."
+        for i in $(seq 1 30); do
+          if curl -sf http://kafka-connect:8083/ >/dev/null 2>&1; then
+            echo "   Kafka Connect disponible."
+            break
+          fi
+          echo "   intento $${i}/30..."
+          sleep 4
+        done
+
+        echo ">> Verificando si el conector ya existe ..."
+        if curl -sf http://kafka-connect:8083/connectors/brewrelay-outbox-connector >/dev/null 2>&1; then
+          echo ">> El conector ya existe. Re-creando para aplicar configuración actual ..."
+          curl -sf -X DELETE http://kafka-connect:8083/connectors/brewrelay-outbox-connector >/dev/null
+        fi
+
+        echo ">> Registrando conector desde /connector.json ..."
+        curl -sf -X POST \
+          -H "Content-Type: application/json" \
+          --data @/connector.json \
+          http://kafka-connect:8083/connectors && echo ""
+
+        echo ">> Estado de los conectores:"
+        curl -sf http://kafka-connect:8083/connectors?expand=status || true
+        echo ""
+        echo "✅ Conector registrado. Saliendo."
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: brewrelay-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: brewrelay
+      PGPASSWORD: brewrelay
+      PGDATABASE: brewrelay
+      PGSSLMODE: disable
+      HTTP_ADDR: ":8080"
+      CORS_ORIGIN: "*"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: brewrelay-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: brewrelay
+      PGPASSWORD: brewrelay
+      PGDATABASE: brewrelay
+      PGSSLMODE: disable
+      KAFKA_BROKERS: "kafka:29092"
+      KAFKA_TOPIC: "coffee.orders"
+      KAFKA_GROUP: "barista-worker"
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "http://localhost:8080"
+    container_name: brewrelay-frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
