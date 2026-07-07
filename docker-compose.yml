@@ -8,7 +8,6 @@ services:
       POSTGRES_USER: brewrelay
       POSTGRES_PASSWORD: brewrelay
       POSTGRES_DB: brewrelay
-      # Replicación lógica para Debezium
       POSTGRES_INITDB_ARGS: "--data-checksums"
     command:
       - "postgres"
@@ -51,8 +50,20 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: "kafka"
+    volumes:
+      - ./docker/jmx/jmx-kafka.yml:/etc/kafka/jmx-kafka.yml:ro
+    user: "0"
+    command:
+      - "bash"
+      - "-c"
+      - |
+        curl -sL -o /tmp/jmx_prometheus_javaagent.jar https://github.com/prometheus/jmx_exporter/releases/download/v1.6.0/jmx_prometheus_javaagent-1.6.0.jar && \
+        export KAFKA_OPTS="-javaagent:/tmp/jmx_prometheus_javaagent.jar=7071:/etc/kafka/jmx-kafka.yml" && \
+        /etc/confluent/docker/run
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "unset JMX_PORT; kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -76,51 +87,41 @@ services:
       VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
       KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: "kafka-connect"
+    volumes:
+      - ./docker/jmx/jmx-connect.yml:/etc/kafka-connect/jmx-connect.yml:ro
+      - ./docker/debezium/connector.json:/connector.json:ro
+    user: "0"
+    command:
+      - "bash"
+      - "-c"
+      - |
+        curl -sL -o /tmp/jmx_prometheus_javaagent.jar https://github.com/prometheus/jmx_exporter/releases/download/v1.6.0/jmx_prometheus_javaagent-1.6.0.jar && \
+        export KAFKA_OPTS="-javaagent:/tmp/jmx_prometheus_javaagent.jar=7072:/etc/kafka-connect/jmx-connect.yml" && \
+        /docker-entrypoint.sh start &
+        CONNECT_PID=$$!
+        echo ">> Esperando a Kafka Connect ..."
+        for i in $$(seq 1 30); do
+          if curl -sf http://localhost:8083/ >/dev/null 2>&1; then
+            echo "   Kafka Connect disponible."
+            break
+          fi
+          sleep 3
+        done
+        echo ">> Registrando conector Debezium ..."
+        if curl -sf http://localhost:8083/connectors/brewrelay-outbox-connector >/dev/null 2>&1; then
+          curl -sf -X DELETE http://localhost:8083/connectors/brewrelay-outbox-connector >/dev/null
+        fi
+        curl -sf -X POST -H "Content-Type: application/json" --data @/connector.json http://localhost:8083/connectors && echo ""
+        echo "✅ Conector registrado."
+        wait $$CONNECT_PID
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8083/ || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 15
       start_period: 30s
-
-  debezium-register:
-    image: curlimages/curl:8.10.1
-    container_name: brewrelay-debezium-register
-    depends_on:
-      kafka-connect:
-        condition: service_healthy
-    volumes:
-      - ./docker/debezium/connector.json:/connector.json:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -eu
-        echo ">> Esperando a Kafka Connect en http://kafka-connect:8083 ..."
-        for i in $(seq 1 30); do
-          if curl -sf http://kafka-connect:8083/ >/dev/null 2>&1; then
-            echo "   Kafka Connect disponible."
-            break
-          fi
-          echo "   intento $${i}/30..."
-          sleep 4
-        done
-
-        echo ">> Verificando si el conector ya existe ..."
-        if curl -sf http://kafka-connect:8083/connectors/brewrelay-outbox-connector >/dev/null 2>&1; then
-          echo ">> El conector ya existe. Re-creando para aplicar configuración actual ..."
-          curl -sf -X DELETE http://kafka-connect:8083/connectors/brewrelay-outbox-connector >/dev/null
-        fi
-
-        echo ">> Registrando conector desde /connector.json ..."
-        curl -sf -X POST \
-          -H "Content-Type: application/json" \
-          --data @/connector.json \
-          http://kafka-connect:8083/connectors && echo ""
-
-        echo ">> Estado de los conectores:"
-        curl -sf http://kafka-connect:8083/connectors?expand=status || true
-        echo ""
-        echo "✅ Conector registrado. Saliendo."
 
   api:
     build:
@@ -182,7 +183,7 @@ services:
     ports:
       - "5173:80"
 
-  # ===== Observabilidad =====
+  # ===== Observabilidad (2 contenedores) =====
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -198,17 +199,6 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=7d"
 
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: brewrelay-postgres-exporter
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "9187:9187"
-    environment:
-      DATA_SOURCE_NAME: "postgresql://brewrelay:brewrelay@postgres:5432/brewrelay?sslmode=disable"
-
   grafana:
     image: grafana/grafana:11.2.0
     container_name: brewrelay-grafana
@@ -220,6 +210,10 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
+      PG_HOST: postgres
+      PG_USER: brewrelay
+      PG_PASSWORD: brewrelay
+      PG_DB: brewrelay
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro

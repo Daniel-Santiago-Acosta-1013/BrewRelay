@@ -6,164 +6,127 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Pedidos creados (total)",
+      "title": "Conector Debezium",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(brewrelay_orders_total)",
+          "expr": "kafka_connect_connector_task_metrics{connector=\"brewrelay-outbox-connector\"}",
+          "legendFormat": "task {{task}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue" }] }
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "RUNNING", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "green", "value": 1 }] }
         }
       },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
       "type": "stat",
-      "title": "Notificaciones barista (total)",
+      "title": "Pedidos total",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "sum(brewrelay_notifications_total)",
-          "refId": "A"
-        }
+        { "expr": "sum(brewrelay_orders_total)", "refId": "A" }
       ],
       "fieldConfig": {
-        "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] }
-        }
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "blue" }] } }
       },
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
       "type": "stat",
-      "title": "Pedidos CREATED",
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "title": "Notificaciones barista",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "brewrelay_orders_by_status{status=\"CREATED\"}",
-          "refId": "A"
-        }
+        { "expr": "sum(brewrelay_notifications_total)", "refId": "A" }
       ],
       "fieldConfig": {
-        "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow" }] }
-        }
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] } }
       },
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
       "type": "stat",
-      "title": "Pedidos PREPARING",
-      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "title": "Consumer Lag",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "brewrelay_orders_by_status{status=\"PREPARING\"}",
-          "refId": "A"
-        }
+        { "expr": "sum(kafka_server_consumer_lag_max{group=\"barista-worker\"})", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange" }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] }
         }
       },
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
-    },
-    {
-      "type": "stat",
-      "title": "Pedidos READY",
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
-      "targets": [
-        {
-          "expr": "brewrelay_orders_by_status{status=\"READY\"}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] }
-        }
-      },
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
       "type": "timeseries",
-      "title": "Pedidos vs Notificaciones (rate por minuto)",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "title": "Mensajes por segundo en coffee.orders",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(brewrelay_orders_total[1m]) * 60",
-          "legendFormat": "pedidos/min",
+          "expr": "rate(kafka_server_brokertopicmessagesinpersec_count{topic=\"coffee.orders\"}[1m])",
+          "legendFormat": "in/s",
           "refId": "A"
-        },
-        {
-          "expr": "rate(brewrelay_notifications_total[1m]) * 60",
-          "legendFormat": "notificaciones/min",
-          "refId": "B"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "ops" } }
     },
     {
       "type": "timeseries",
-      "title": "Pedidos por estado (gauge)",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "title": "Debezium — records producidos por el conector",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "brewrelay_orders_by_status",
-          "legendFormat": "{{status}}",
+          "expr": "rate(kafka_connect_source_task_metrics{connector=\"brewrelay-outbox-connector\"}[1m])",
+          "legendFormat": "records/s",
           "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
-    },
-    {
-      "type": "timeseries",
-      "title": "PostgreSQL — transacciones commit/s",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
-      "targets": [
-        {
-          "expr": "rate(pg_stat_database_xact_commit{datname=\"brewrelay\"}[1m])",
-          "legendFormat": "commits/s",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(pg_stat_database_xact_rollback{datname=\"brewrelay\"}[1m])",
-          "legendFormat": "rollbacks/s",
-          "refId": "B"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "ops" } }
     },
     {
       "type": "timeseries",
-      "title": "PostgreSQL — conexiones activas",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "title": "Pedidos / Notificaciones (rate por minuto)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "expr": "pg_stat_database_numbackends{datname=\"brewrelay\"}",
-          "legendFormat": "backends",
-          "refId": "A"
-        },
-        {
-          "expr": "pg_stat_activity_count{datname=\"brewrelay\",state=\"active\"}",
-          "legendFormat": "active",
-          "refId": "B"
-        }
+        { "expr": "rate(brewrelay_orders_total[1m]) * 60", "legendFormat": "pedidos/min", "refId": "A" },
+        { "expr": "rate(brewrelay_notifications_total[1m]) * 60", "legendFormat": "notifs/min", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pedidos por estado",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "brewrelay_orders_by_status", "legendFormat": "{{status}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "short" } }
     },
     {
       "type": "stat",
-      "title": "Replication slot lag (bytes)",
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 22 },
+      "title": "Replication slot lag (Postgres SQL)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 21 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "expr": "pg_replication_slot_pg_wal_lsn_diff{slot_name=\"brewrelay_slot\"}",
-          "refId": "A"
+          "rawQuery": true,
+          "query": "SELECT now() as time, pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)::float as lag_bytes FROM pg_replication_slots WHERE slot_name = 'brewrelay_slot'",
+          "refId": "A",
+          "format": "time_series"
         }
       ],
       "fieldConfig": {
@@ -176,12 +139,36 @@
     },
     {
       "type": "stat",
-      "title": "Tamaño de la DB",
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 22 },
+      "title": "Conexiones PostgreSQL (SQL)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 21 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "expr": "pg_database_size_bytes{datname=\"brewrelay\"}",
-          "refId": "A"
+          "rawQuery": true,
+          "query": "SELECT now() as time, count(*)::float as connections FROM pg_stat_activity WHERE datname = 'brewrelay'",
+          "refId": "A",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 20 }] }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Tamaño DB (SQL)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 21 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "targets": [
+        {
+          "rawQuery": true,
+          "query": "SELECT now() as time, pg_database_size('brewrelay')::float as size_bytes",
+          "refId": "A",
+          "format": "time_series"
         }
       ],
       "fieldConfig": {
@@ -190,26 +177,37 @@
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "type": "stat",
-      "title": "Tuplas insertadas (total)",
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 22 },
+      "type": "table",
+      "title": "Pedidos recientes (Postgres)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 27 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
       "targets": [
         {
-          "expr": "sum(pg_stat_database_tup_inserted{datname=\"brewrelay\"})",
+          "rawQuery": true,
+          "query": "SELECT customer_name AS \"Cliente\", drink AS \"Bebida\", size AS \"Tamaño\", quantity AS \"Qty\", total AS \"Total\", status AS \"Estado\", created_at AS \"Creado\" FROM coffee_orders ORDER BY created_at DESC LIMIT 20",
           "refId": "A"
         }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "short" }
-      },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Notificaciones del barista (Postgres)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 37 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "targets": [
+        {
+          "rawQuery": true,
+          "query": "SELECT n.message AS \"Mensaje\", o.drink AS \"Bebida\", o.size AS \"Tamaño\", o.quantity AS \"Qty\", n.received_at AS \"Recibido\" FROM barista_notifications n JOIN coffee_orders o ON o.id = n.order_id ORDER BY n.received_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
-  "tags": ["brewrelay", "outbox", "postgres"],
+  "tags": ["brewrelay", "outbox", "kafka", "debezium", "postgres"],
   "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
-  "title": "BrewRelay — Observabilidad Outbox · DB · API",
+  "title": "BrewRelay — Observabilidad completa",
   "uid": "brewrelay-overview",
   "version": 1
 }

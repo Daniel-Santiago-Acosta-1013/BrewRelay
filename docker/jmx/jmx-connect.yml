@@ -1,0 +1,41 @@
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  # Connector task metrics
+  - pattern: 'kafka.connect<type=connector-metrics, connector=(.+), task=(.+)><>(.+): (.+)'
+    name: kafka_connect_connector_task_$3
+    labels:
+      connector: $1
+      task: $2
+    type: GAUGE
+    value: $4
+  - pattern: 'kafka.connect<type=connector-metrics, connector=(.+), task=(.+)><>Value'
+    name: kafka_connect_connector_task_metrics
+    labels:
+      connector: $1
+      task: $2
+    type: GAUGE
+  # Source task metrics (records produced, offset, etc.)
+  - pattern: 'kafka.connect<type=source-task-metrics, connector=(.+), task=(.+)><>Value'
+    name: kafka_connect_source_task_metrics
+    labels:
+      connector: $1
+      task: $2
+    type: GAUGE
+  # Worker metrics
+  - pattern: 'kafka.connect<type=worker-metrics, name=(.+)><>Value'
+    name: kafka_connect_worker_$1
+    type: GAUGE
+  # General Connect metrics
+  - pattern: 'kafka.connect<type=(.+), name=(.+)><>Value'
+    name: kafka_connect_$1_$2
+    type: GAUGE
+  # Debezium connector metrics
+  - pattern: 'debezium.<type=(.+), name=(.+)><>Value'
+    name: debezium_$1_$2
+    type: GAUGE
+  - pattern: 'debezium.<type=(.+), name=(.+), connector=(.+)><>Value'
+    name: debezium_$1_$2
+    labels:
+      connector: $3
+    type: GAUGE
