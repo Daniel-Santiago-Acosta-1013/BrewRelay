@@ -47,6 +47,7 @@ func main() {
 		GroupID:  group,
 		MinBytes: 1,
 		MaxBytes: 10 << 20,
+		CommitInterval: 0, // commit síncrono tras procesar
 	})
 	defer r.Close()
 

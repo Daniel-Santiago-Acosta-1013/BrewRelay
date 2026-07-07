@@ -1,19 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  PlusCircle,
-  ClipboardList,
-  Bell,
-  Coffee,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Coffee, ChefHat, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const items = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/new-order', icon: PlusCircle, label: 'Nueva orden' },
-  { to: '/orders', icon: ClipboardList, label: 'Pedidos' },
-  { to: '/notifications', icon: Bell, label: 'Notificaciones' },
+  { to: '/', icon: Coffee, label: 'Carta' },
+  { to: '/kitchen', icon: ChefHat, label: 'Cocina' },
+  { to: '/how-it-works', icon: Info, label: 'Cómo funciona' },
 ]
 
 function useIsActive(path: string) {
@@ -21,25 +13,20 @@ function useIsActive(path: string) {
   return pathname === path
 }
 
-export function Sidebar({ className }: { className?: string }) {
+export function Sidebar() {
   return (
-    <aside
-      className={cn(
-        'hidden lg:flex flex-col w-64 border-r border-border bg-card min-h-screen sticky top-0',
-        className
-      )}
-    >
-      <div className="flex items-center gap-2 px-6 py-5 border-b border-border">
+    <aside className="hidden lg:flex sticky top-0 h-screen w-64 flex-col border-r border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-6 py-5">
         <Coffee className="h-6 w-6 text-primary" />
         <span className="text-lg font-bold tracking-tight">BrewRelay</span>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 space-y-1 px-3 py-4">
         {items.map((item) => (
           <NavLink key={item.to} {...item} />
         ))}
       </nav>
-      <div className="px-6 py-4 text-xs text-muted-foreground border-t border-border">
-        Outbox · Debezium · Kafka
+      <div className="border-t border-border px-6 py-4 text-xs text-muted-foreground">
+        Pedidos de café de punta a punta
       </div>
     </aside>
   )
@@ -62,7 +49,7 @@ function NavLink({
         'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
         isActive
           ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
       )}
     >
       <Icon className={cn('h-4 w-4', isActive ? 'text-primary-foreground' : '')} />
@@ -73,7 +60,7 @@ function NavLink({
 
 export function MobileNav() {
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-card lg:hidden">
       <div className="flex items-center justify-around py-2">
         {items.map((item) => (
           <MobileNavLink key={item.to} {...item} />
@@ -97,8 +84,8 @@ function MobileNavLink({
     <Link
       to={to}
       className={cn(
-        'flex flex-col items-center gap-1 p-2 text-xs font-medium transition-colors rounded-lg',
-        isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+        'flex flex-col items-center gap-1 rounded-lg p-2 text-xs font-medium transition-colors',
+        isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
       )}
     >
       <Icon className="h-5 w-5" />
@@ -109,16 +96,11 @@ function MobileNavLink({
 
 export function TopBar() {
   return (
-    <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-card px-4 py-3">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-card px-4 py-3 lg:hidden">
       <div className="flex items-center gap-2">
         <Coffee className="h-5 w-5 text-primary" />
         <span className="font-bold tracking-tight">BrewRelay</span>
       </div>
-      <Button variant="ghost" size="icon" asChild>
-        <Link to="/new-order">
-          <PlusCircle className="h-5 w-5" />
-        </Link>
-      </Button>
     </header>
   )
 }

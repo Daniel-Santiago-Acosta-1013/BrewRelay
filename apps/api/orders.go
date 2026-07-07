@@ -15,6 +15,7 @@ type Order struct {
 	Drink        string    `json:"drink"`
 	Size         string    `json:"size"`
 	Quantity     int       `json:"quantity"`
+	Total        float64   `json:"total"`
 	Status       string    `json:"status"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
@@ -41,6 +42,7 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 	orderID := uuid.New()
 	eventID := uuid.New()
 	now := time.Now().UTC()
+	total := priceFor(req.Drink, req.Size) * float64(req.Quantity)
 
 	payload := map[string]interface{}{
 		"orderId":      orderID.String(),
@@ -48,6 +50,7 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 		"drink":        req.Drink,
 		"size":         req.Size,
 		"quantity":     req.Quantity,
+		"total":        total,
 		"status":       "CREATED",
 	}
 	payloadBytes, err := json.Marshal(payload)
@@ -64,9 +67,9 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	_, err = tx.Exec(`
-		INSERT INTO coffee_orders (id, customer_name, drink, size, quantity, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, 'CREATED', $6)`,
-		orderID, req.CustomerName, req.Drink, req.Size, req.Quantity, now,
+		INSERT INTO coffee_orders (id, customer_name, drink, size, quantity, total, status, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 'CREATED', $7)`,
+		orderID, req.CustomerName, req.Drink, req.Size, req.Quantity, total, now,
 	)
 	if err != nil {
 		http.Error(w, "insert order failed: "+err.Error(), http.StatusInternalServerError)
@@ -94,6 +97,7 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 		"drink":        req.Drink,
 		"size":         req.Size,
 		"quantity":     req.Quantity,
+		"total":        total,
 		"status":       "CREATED",
 		"createdAt":    now,
 	})
@@ -101,7 +105,7 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) listOrders(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(`
-		SELECT id, customer_name, drink, size, quantity, status, created_at
+		SELECT id, customer_name, drink, size, quantity, total, status, created_at
 		FROM coffee_orders ORDER BY created_at DESC`)
 	if err != nil {
 		http.Error(w, "query error: "+err.Error(), http.StatusInternalServerError)
@@ -112,7 +116,7 @@ func (a *api) listOrders(w http.ResponseWriter, r *http.Request) {
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.CustomerName, &o.Drink, &o.Size, &o.Quantity, &o.Status, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.CustomerName, &o.Drink, &o.Size, &o.Quantity, &o.Total, &o.Status, &o.CreatedAt); err != nil {
 			http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

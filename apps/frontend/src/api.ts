@@ -1,4 +1,4 @@
-import type { Order, BaristaNotification } from '@/types'
+import type { Order, BaristaNotification, MenuItem } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
@@ -32,6 +32,10 @@ export function getOrders(): Promise<Order[]> {
 
 export function getBaristaNotifications(): Promise<BaristaNotification[]> {
   return request<BaristaNotification[]>('/barista-notifications')
+}
+
+export function getMenu(): Promise<MenuItem[]> {
+  return request<MenuItem[]>('/menu')
 }
 
 export function getHealth(): Promise<unknown> {

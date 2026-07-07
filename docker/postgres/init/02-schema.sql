@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS coffee_orders (
   drink         VARCHAR(50)  NOT NULL,
   size          VARCHAR(20)  NOT NULL,
   quantity      INT          NOT NULL,
+  total         NUMERIC(10,2) NOT NULL DEFAULT 0,
   status        VARCHAR(30)  NOT NULL DEFAULT 'CREATED',
   created_at    TIMESTAMP    NOT NULL DEFAULT now()
 );

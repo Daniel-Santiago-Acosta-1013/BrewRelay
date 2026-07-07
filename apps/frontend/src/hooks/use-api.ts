@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Order, BaristaNotification } from '@/types'
+import type { Order, BaristaNotification, MenuItem } from '@/types'
 import {
   createOrder,
   getOrders,
   getBaristaNotifications,
+  getMenu,
   getHealth,
 } from '@/api'
 
@@ -80,6 +81,34 @@ export function useNotifications() {
   }, [load])
 
   return { notifications, loading, error, reload: load }
+}
+
+export function useMenu() {
+  const [menu, setMenu] = useState<MenuItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const data = await getMenu()
+        if (active) {
+          setMenu(data)
+          setError(null)
+        }
+      } catch (err) {
+        if (active) setError((err as Error).message)
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return { menu, loading, error }
 }
 
 export function useCreateOrder() {

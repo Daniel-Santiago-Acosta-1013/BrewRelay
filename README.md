@@ -123,4 +123,3 @@ Ver [`docker/postgres/init/02-schema.sql`](../docker/postgres/init/02-schema.sql
 - `coffee_orders`
 - `outbox_events`
 - `barista_notifications`
-# BrewRelay
