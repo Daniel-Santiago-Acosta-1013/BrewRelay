@@ -6,6 +6,7 @@ import {
   getBaristaNotifications,
   getMenu,
   getHealth,
+  updateOrderStatus,
 } from '@/api'
 
 export function useHealth() {
@@ -129,4 +130,19 @@ export function useCreateOrder() {
   }
 
   return { submit, submitting }
+}
+
+export function useUpdateOrderStatus() {
+  const [updating, setUpdating] = useState(false)
+
+  async function update(id: string, status: string) {
+    setUpdating(true)
+    try {
+      return await updateOrderStatus(id, status)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return { update, updating }
 }

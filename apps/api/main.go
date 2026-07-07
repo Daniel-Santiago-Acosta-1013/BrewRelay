@@ -32,8 +32,10 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	mux.HandleFunc("/orders/", a.handleOrder) // /orders/{id}/status
 	mux.HandleFunc("/barista-notifications", a.listBaristaNotifications)
 	mux.HandleFunc("/menu", a.handleMenu)
+	mux.Handle("/metrics", metricsHandler(a.db))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -49,7 +51,7 @@ func main() {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", getEnv("CORS_ORIGIN", "*"))
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

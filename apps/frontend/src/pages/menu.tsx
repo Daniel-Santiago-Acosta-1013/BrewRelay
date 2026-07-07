@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { Coffee, ShoppingBag, Loader2 } from 'lucide-react'
 import type { Size } from '@/types'
-import { useMenu, useOrders, useNotifications, useCreateOrder } from '@/hooks/use-api'
+import { useMenu, useOrders, useCreateOrder } from '@/hooks/use-api'
 import { useCart } from '@/hooks/use-cart'
 import { useToast } from '@/components/ui/toast'
 import { DrinkCard } from '@/components/menu/drink-card'
@@ -12,18 +12,12 @@ import { OrderCard } from '@/components/order/order-card'
 export function MenuPage() {
   const { menu, loading: menuLoading } = useMenu()
   const { orders, loading: ordersLoading } = useOrders()
-  const { notifications } = useNotifications()
   const { submit, submitting } = useCreateOrder()
   const toast = useToast()
 
   const cart = useCart()
   const [cartOpen, setCartOpen] = useState(false)
   const [customerName, setCustomerName] = useState('')
-
-  const receivedOrderIds = useMemo(
-    () => new Set(notifications.map((n) => n.orderId)),
-    [notifications],
-  )
 
   function handleAdd(drink: string, size: Size, unitPrice: number) {
     cart.add({ drink, size, quantity: 1, unitPrice })
@@ -110,11 +104,7 @@ export function MenuPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <AnimatePresence>
               {orders.map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  receivedByBarista={receivedOrderIds.has(order.id)}
-                />
+                <OrderCard key={order.id} order={order} />
               ))}
             </AnimatePresence>
           </div>

@@ -1,15 +1,28 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, Clock } from 'lucide-react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import type { Order } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/format'
 
 interface Props {
   order: Order
-  receivedByBarista: boolean
 }
 
-export function OrderCard({ order, receivedByBarista }: Props) {
+const MILESTONES = ['CREATED', 'PREPARING', 'READY'] as const
+
+const LABELS: Record<string, string> = {
+  CREATED: 'Creado',
+  PREPARING: 'Preparando',
+  READY: 'Listo',
+}
+
+export function OrderCard({ order }: Props) {
+  const reachedIndex = MILESTONES.indexOf(order.status as (typeof MILESTONES)[number])
+  const isDelivered = order.status === 'DELIVERED'
+  // reachedIndex = índice del último hito completado.
+  // -1 significa estado desconocido → al menos "Creado" done.
+  const lastDone = reachedIndex < 0 ? 0 : reachedIndex
+
   return (
     <motion.div
       layout
@@ -32,10 +45,18 @@ export function OrderCard({ order, receivedByBarista }: Props) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <Milestone label="Creado" done />
-        <Line done={receivedByBarista} />
-        <Milestone label="Barista" done={receivedByBarista} />
+      <div className="mt-3 flex items-center gap-1">
+        {MILESTONES.map((ms, idx) => {
+          const done = idx <= lastDone || isDelivered
+          return (
+            <div key={ms} className="flex flex-1 items-center gap-1">
+              <Milestone label={ms} done={done} />
+              {idx < MILESTONES.length - 1 && (
+                <Line done={(idx < lastDone) || isDelivered} />
+              )}
+            </div>
+          )
+        })}
       </div>
 
       <div className="mt-2 text-xs text-muted-foreground">
@@ -51,15 +72,15 @@ function Milestone({ label, done }: { label: string; done: boolean }) {
       {done ? (
         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
       ) : (
-        <Clock className="h-4 w-4 text-muted-foreground" />
+        <Circle className="h-4 w-4 text-muted-foreground/40" />
       )}
       <span
         className={cn(
           'text-xs font-medium',
-          done ? 'text-emerald-500' : 'text-muted-foreground',
+          done ? 'text-emerald-500' : 'text-muted-foreground/50',
         )}
       >
-        {label}
+        {LABELS[label] ?? label}
       </span>
     </div>
   )
@@ -69,7 +90,7 @@ function Line({ done }: { done: boolean }) {
   return (
     <div
       className={cn(
-        'h-px flex-1 transition-colors',
+        'mx-1 h-px flex-1 transition-colors',
         done ? 'bg-emerald-500' : 'bg-border',
       )}
     />

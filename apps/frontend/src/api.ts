@@ -26,6 +26,13 @@ export function createOrder(input: {
   })
 }
 
+export function updateOrderStatus(id: string, status: string): Promise<Order> {
+  return request<Order>(`/orders/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
 export function getOrders(): Promise<Order[]> {
   return request<Order[]>('/orders')
 }

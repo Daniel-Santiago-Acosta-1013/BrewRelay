@@ -91,6 +91,8 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ordersTotal.Inc()
+
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":           orderID,
 		"customerName": req.CustomerName,
