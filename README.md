@@ -1,125 +1,133 @@
-# BrewRelay ☕
+[English](README.md) | [Español](README.es.md)
 
-> Mini app de pedidos de cafetería para aprender el patrón **Outbox** con **Debezium** y **Kafka**.
+# BrewRelay
 
-## ¿Qué demuestra?
+Coffee ordering web app that demonstrates the **Outbox pattern** with **Debezium** and **Kafka** end-to-end. React/Vite frontend, Go API, Go worker (Barista Service), Terraform/Terragrunt infrastructure, and GitHub Actions deployments.
 
-El flujo completo de punta a punta:
+Licensed under the [Apache License 2.0](LICENSE).
 
-```
-Frontend → Go API → PostgreSQL → outbox_events → Debezium → Kafka → Barista Service
-```
+## Architecture
 
-**Concepto clave:** el Outbox **no reemplaza** a Kafka.
+Four explicit boundaries: frontend owns the ordering workflow, API owns order creation and transactional event persistence, worker owns event consumption and barista notifications, infrastructure owns deployment, isolation, and observability.
 
-- El **Outbox** (`outbox_events`) guarda el evento de forma confiable en la misma transacción que el pedido.
-- **Debezium** captura el cambio (CDC) en `outbox_events`.
-- **Kafka** distribuye el evento al consumidor.
-- El **Barista Service** (`apps/worker`) consume el evento y guarda una notificación.
-
-## Stack
-
-| Capa            | Tecnología |
-|-----------------|------------|
-| Frontend        | TypeScript + Bun + Vite |
-| API             | Go (`apps/api`) |
-| Worker          | Go (`apps/worker` — Barista Service) |
-| DB              | PostgreSQL |
-| Outbox          | tabla `outbox_events` |
-| CDC             | Debezium (Outbox Event Router) |
-| Broker          | Kafka |
-| Infra local     | Docker Compose |
-| Infra AWS       | S3 + CloudFront, ECS Fargate, RDS, MSK, MSK Connect |
-| IaC             | Terraform / Terragrunt |
-
-## Estructura
-
-```
-BrewRelay/
-├── apps/
-│   ├── api/          # API en Go (POST/GET /orders, /barista-notifications, /health)
-│   ├── frontend/     # Web TS + Bun + Vite
-│   └── worker/       # Barista Service en Go (consumidor Kafka)
-├── docker/
-│   ├── postgres/init # schema SQL + usuario + publicación lógica
-│   └── debezium/     # connector.json + script de registro (manual/opcional)
-├── docker-compose.yml
-├── infra/terraform/
-│   ├── modules/      # vpc, rds, ecr, ecs, msk, frontend
-│   ├── live/dev/     # configuración terragrunt por entorno
-│   ├── root.hcl
-│   └── backend.hcl.example
-├── docs/
-│   ├── architecture.md
-│   ├── flow.md
-│   ├── decisions.md
-│   ├── debezium-connector.md
-│   └── aws-deployment.md
-└── README.md
+```mermaid
+flowchart LR
+    Browser["Browser (React/Vite)"] -->|POST /orders| API["Go API<br/>ECS Fargate"]
+    API -->|BEGIN TX| PG[("PostgreSQL<br/>RDS")]
+    API -->|INSERT order| PG
+    API -->|INSERT outbox event| PG
+    API -->|COMMIT| PG
+    PG -->|CDC: WAL logical| DBZ["Debezium<br/>Outbox Event Router"]
+    DBZ -->|publish| KAFKA[("Kafka<br/>MSK")]
+    KAFKA -->|consume| WORKER["Barista Service<br/>ECS Fargate"]
+    WORKER -->|INSERT notification| PG
+    WORKER -->|UPDATE status| PG
+    Browser -->|GET /orders| API
+    Browser -->|GET /barista-notifications| API
 ```
 
-## Arranque local (Docker Compose)
+The key insight: the **Outbox does not replace Kafka** — it complements it. The outbox table (`outbox_events`) stores the event reliably in the same database transaction as the order. Debezium captures the change via CDC (logical replication) and publishes it to Kafka. The Barista Service consumes the event and records a notification. This avoids the dual-write problem: if the API published directly to Kafka and crashed between the INSERT and the produce, the system would be inconsistent.
+
+### Frontend — React + Vite
+
+`apps/frontend/src` (React 19 + Vite + Tailwind CSS + shadcn/ui + Framer Motion):
+
+- **Menu page**: drink catalog from `GET /menu`, cart drawer with checkout, order tracking with real status milestones (Created → Preparing → Ready).
+- **Kitchen page**: real-time barista board with order tickets grouped by status (New, Preparing, Ready). Barista advances status via `PATCH /orders/{id}/status`.
+- **How it works page**: educational diagram of the Outbox → Debezium → Kafka flow.
+
+### API — Go
+
+`apps/api` (Go, ECS Fargate + ALB). Endpoints:
+
+- `GET /menu` — drink catalog with prices per size.
+- `POST /orders` — creates order + outbox event in one transaction, calculates total.
+- `GET /orders` — lists all orders with status.
+- `PATCH /orders/{id}/status` — barista advances status (CREATED → PREPARING → READY → DELIVERED).
+- `GET /barista-notifications` — barista event history.
+- `GET /health` — health check.
+- `GET /metrics` — Prometheus metrics (orders, notifications, orders by status).
+
+### Worker — Barista Service (Go)
+
+`apps/worker` (Go, ECS Fargate). Consumes `coffee.orders` Kafka topic, parses `OrderCreated` events, and inserts a notification row into `barista_notifications`. The worker also advances the order status when the barista acts via the API.
+
+### Infrastructure — AWS Runtime and Delivery
+
+Provisioned with Terraform modules (`infra/blueprints/modules`) and Terragrunt live stacks (`infra/terraform`). GitHub Actions builds, tests, and deploys frontend, API, worker images, and infrastructure changes.
+
+- **S3 + CloudFront** deliver the frontend (OAC, SPA fallback).
+- **ECS Fargate** runs the API and worker from ECR.
+- **ALB** exposes the API on port 80 with health checks.
+- **RDS PostgreSQL** with `rds.logical_replication = 1` for Debezium CDC.
+- **Amazon MSK** provides the Kafka cluster.
+- **MSK Connect** runs the Debezium connector.
+- **CloudWatch** captures logs, alarms, and an operations dashboard.
+- **IAM OIDC** allows GitHub Actions to deploy without long-lived keys.
+
+## Repository Layout
+
+- `apps/frontend`: Bun-managed React + TypeScript + Vite ordering UI.
+- `apps/api`: Go API for orders, menu, status transitions, and barista notifications.
+- `apps/worker`: Go Kafka consumer (Barista Service) that processes `OrderCreated` events.
+- `infra/blueprints`: reusable Terraform modules and remote-state bootstrap.
+- `infra/terraform`: Terragrunt live stacks organized into `shared/` (VPC, RDS, MSK, observability, IAM) and `services/` (ECR, ECS, frontend).
+- `.github/workflows`: CI/CD for infra, frontend, and backend deploys.
+- `.github/scripts`: bootstrap, cleanup, and CORS resolution helpers.
+- `docs/`: architecture, flow, decisions, Debezium connector, and AWS deployment guides.
+
+## Local Usage
 
 ```bash
-# Levanta TODO: postgres, kafka, kafka-connect, debezium-register, api, worker, frontend
 docker compose up -d --build
 ```
 
-El servicio `debezium-register` registra el conector Outbox automáticamente
-(es idempotente: si ya existe, lo borra y lo vuelve a crear con la config actual).
+The full system runs locally on Docker Compose: PostgreSQL (with logical replication), Kafka (KRaft mode), Kafka Connect (Debezium connector auto-registered), API, worker, frontend, and observability (Prometheus + Grafana).
 
-### Verificación rápida
-
-```bash
-# Estado de todos los servicios
-docker compose ps
-
-# Crear un pedido
-curl -X POST http://localhost:8080/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"customerName":"Santi","drink":"Latte","size":"Medium","quantity":1}'
-
-# Ver pedidos
-curl http://localhost:8080/orders
-
-# Ver notificaciones del barista (tras CDC + Kafka)
-curl http://localhost:8080/barista-notifications
-
-# Estado del conector Debezium
-curl http://localhost:8083/connectors/brewrelay-outbox-connector/status
+```mermaid
+flowchart LR
+    Browser["Browser (Vite :5173)"] -->|HTTP| API["Go API :8080"]
+    API -->|TX: order + outbox| PG[("PostgreSQL :5432")]
+    PG -->|CDC| DBZ["Debezium :8083"]
+    DBZ -->|publish| KAFKA[("Kafka :9092")]
+    KAFKA -->|consume| WORKER["Worker<br/>Barista Service"]
+    WORKER -->|INSERT notification| PG
+    PROM["Prometheus :9090"] -->|scrape| API
+    PROM -->|scrape| KAFKA
+    PROM -->|scrape| DBZ
+    GRAF["Grafana :3000"] -->|query| PROM
+    GRAF -->|SQL query| PG
 ```
 
-### Registro manual del conector (opcional)
+1. Open http://localhost:5173 to see the menu.
+2. Add drinks to the cart, enter your name, and send the order.
+3. The order appears in "Tus pedidos" with the "Creado" milestone.
+4. Go to the "Cocina" tab — the ticket appears in the "Nuevos" column.
+5. Click "Empezar a preparar" — the order moves to "Preparando".
+6. Return to "Carta" — the tracking shows "Preparando" completed.
+7. Click "Marcar como listo" in the kitchen — the order is ready.
+8. Check Grafana at http://localhost:3000 (admin/admin) for metrics.
 
-Si necesitas re-registrar el conector fuera del `docker compose up`:
+The Debezium connector is auto-registered by the `kafka-connect` container on startup (idempotent). To re-register manually:
 
 ```bash
 ./docker/debezium/register-connector.sh
 ```
 
-## Funcionalidades del MVP
+## MVP Limits
 
-- Pantalla única: crear pedido, listar pedidos y listar eventos del barista.
-- Bebidas: `Latte`, `Americano`, `Cappuccino`, `Mocha`, `Espresso`.
-- Tamaños: `Small`, `Medium`, `Large`.
-- El `Barista Service` genera: `Nuevo pedido recibido: Latte Medium x1 para Santi`.
+- Drinks: Latte, Americano, Cappuccino, Mocha, Espresso.
+- Sizes: Small, Medium, Large.
+- Single event type: `OrderCreated`.
+- Single consumer: Barista Service.
+- No login, payments, inventory, roles, or admin panel.
 
-## Criterios de aceptación
+## Deploy
 
-1. **Crear pedido** → se guarda en `coffee_orders` y en `outbox_events` (misma transacción).
-2. **Captura CDC** → Debezium publica el evento en `coffee.orders`.
-3. **Barista** → `Barista Service` crea una fila en `barista_notifications`.
-4. **Visualización** → el frontend muestra pedidos y eventos recibidos.
+1. Configure `AWS_ROLE_ARN` (OIDC) and `DB_PASSWORD` as repository secrets. `AWS_REGION` is fixed as `us-east-1` in workflows.
+2. Run `.github/workflows/infra-lifecycle.yml` with `plan` or `apply`. Bootstraps the Terraform state bucket and DynamoDB lock table if missing. Destroy flows stop ECS tasks and empty S3/ECR before Terragrunt destroys stacks.
+3. Deploy backend through `.github/workflows/backend-deploy.yml`. On push to `main`, it detects path changes and deploys only the affected components (API and/or worker) as Docker images to ECR, then applies the ECS task definition.
+4. Deploy frontend through `.github/workflows/frontend-deploy.yml`. Builds with Bun, syncs to S3, and invalidates CloudFront.
+5. `.github/workflows/destroy-infra-scheduled.yml` runs a weekly cron (Sundays 03:00 UTC) to destroy the dev environment and contain costs.
 
-## Fuera de alcance
-
-Login, pagos, inventario, roles, panel administrativo, correo, Kubernetes,
-múltiples tipos de eventos y múltiples consumidores.
-
-## Modelo de datos
-
-Ver [`docker/postgres/init/02-schema.sql`](../docker/postgres/init/02-schema.sql).
-
-- `coffee_orders`
-- `outbox_events`
-- `barista_notifications`
+Terraform modules use private S3 buckets, CloudFront OAC, RDS logical replication, MSK encryption, ECS Fargate isolation, CloudWatch alarms, and IAM OIDC for keyless deploys.
