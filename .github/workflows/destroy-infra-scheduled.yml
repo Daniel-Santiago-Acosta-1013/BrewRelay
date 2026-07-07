@@ -1,0 +1,65 @@
+name: Destroy Infra (Scheduled)
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"  # Domingos 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Escribir "destroy brewrelay dev" para confirmar'
+        required: true
+        type: string
+        default: ""
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: brewrelay
+  ENVIRONMENT: dev
+  TF_VERSION: 1.5.7
+  TG_VERSION: 0.98.0
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.confirm == 'destroy brewrelay dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sL -o /tmp/tg https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TG_VERSION }}/terragrunt_linux_amd64
+          chmod +x /tmp/tg
+          sudo mv /tmp/tg /usr/local/bin/terragrunt
+
+      - name: Bootstrap Terraform state
+        run: .github/scripts/bootstrap-terraform-state.sh
+
+      - name: Pre-destroy cleanup
+        run: .github/scripts/pre-destroy-cleanup.sh
+
+      - name: Destroy infra (reverse order)
+        run: |
+          cd infra/terraform
+          for stack in live/dev/services/frontend live/dev/services/ecs live/dev/services/ecr live/dev/shared/observability live/dev/shared/msk live/dev/shared/rds live/dev/shared/vpc; do
+            echo ">> Destroying ${stack} ..."
+            terragrunt destroy -auto-approve --terragrunt-working-dir "${stack}"
+          done
+
+      - name: Post-destroy cleanup
+        run: .github/scripts/post-destroy-cleanup.sh

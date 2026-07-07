@@ -1,0 +1,110 @@
+name: Infra Lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción a ejecutar"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+          - destroy-and-recreate
+      confirm:
+        description: 'Escribir "destroy brewrelay dev" para acciones destructivas'
+        required: false
+        type: string
+        default: ""
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: brewrelay
+  ENVIRONMENT: dev
+  TF_VERSION: 1.5.7
+  TG_VERSION: 0.98.0
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sL -o /tmp/tg https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TG_VERSION }}/terragrunt_linux_amd64
+          chmod +x /tmp/tg
+          sudo mv /tmp/tg /usr/local/bin/terragrunt
+
+      - name: Bootstrap Terraform state
+        run: .github/scripts/bootstrap-terraform-state.sh
+
+      - name: Validate confirmation for destructive actions
+        if: ${{ github.event.inputs.action == 'destroy' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: |
+          if [[ "${{ github.event.inputs.confirm }}" != "destroy brewrelay dev" ]]; then
+            echo "❌ Confirmación requerida: escribe 'destroy brewrelay dev'"
+            exit 1
+          fi
+
+      - name: Pre-destroy cleanup
+        if: ${{ github.event.inputs.action == 'destroy' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: .github/scripts/pre-destroy-cleanup.sh
+
+      - name: Apply infra (ordered)
+        if: ${{ github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: |
+          cd infra/terraform
+          for stack in live/dev/shared/vpc live/dev/shared/rds live/dev/shared/msk live/dev/shared/observability live/dev/services/ecr live/dev/services/ecs live/dev/services/frontend; do
+            echo ">> Applying ${stack} ..."
+            terragrunt apply -auto-approve --terragrunt-working-dir "${stack}"
+          done
+
+      - name: Plan infra
+        if: ${{ github.event.inputs.action == 'plan' }}
+        run: |
+          cd infra/terraform
+          for stack in live/dev/shared/vpc live/dev/shared/rds live/dev/shared/msk live/dev/shared/observability live/dev/services/ecr live/dev/services/ecs live/dev/services/frontend; do
+            echo ">> Planning ${stack} ..."
+            terragrunt plan --terragrunt-working-dir "${stack}"
+          done
+
+      - name: Destroy infra (reverse order)
+        if: ${{ github.event.inputs.action == 'destroy' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: |
+          cd infra/terraform
+          for stack in live/dev/services/frontend live/dev/services/ecs live/dev/services/ecr live/dev/shared/observability live/dev/shared/msk live/dev/shared/rds live/dev/shared/vpc; do
+            echo ">> Destroying ${stack} ..."
+            terragrunt destroy -auto-approve --terragrunt-working-dir "${stack}"
+          done
+
+      - name: Post-destroy cleanup
+        if: ${{ github.event.inputs.action == 'destroy' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: .github/scripts/post-destroy-cleanup.sh
+
+      - name: Resolve browser origins
+        if: ${{ github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: .github/scripts/resolve-browser-origins.sh
+
+      - name: Re-apply frontend with CORS
+        if: ${{ github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy-and-recreate' }}
+        run: |
+          cd infra/terraform
+          terragrunt apply -auto-approve --terragrunt-working-dir live/dev/services/frontend

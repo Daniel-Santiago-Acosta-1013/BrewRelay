@@ -3,7 +3,7 @@ include {
 }
 
 terraform {
-  source = "../../../modules/ecr"
+  source = "../../../../blueprints/modules/ecr"
 }
 
 inputs = {

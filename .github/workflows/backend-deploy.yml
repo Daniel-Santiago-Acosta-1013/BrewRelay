@@ -1,0 +1,133 @@
+name: Backend Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - apps/worker/**
+      - infra/blueprints/modules/ecs/**
+      - infra/blueprints/modules/ecr/**
+      - infra/terraform/live/dev/services/ecs/**
+      - infra/terraform/live/dev/services/ecr/**
+      - .github/workflows/backend-deploy.yml
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Componente a deployar"
+        required: true
+        type: choice
+        options: [both, api, worker]
+        default: both
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: brewrelay
+  ENVIRONMENT: dev
+  TF_VERSION: 1.5.7
+  TG_VERSION: 0.98.0
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_api: ${{ steps.detect.outputs.deploy_api }}
+      deploy_worker: ${{ steps.detect.outputs.deploy_worker }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET="${{ github.event.inputs.target }}"
+            echo "deploy_api=true" >> "$GITHUB_OUTPUT"; echo "deploy_worker=true" >> "$GITHUB_OUTPUT"
+            if [[ "${TARGET}" == "api" ]]; then echo "deploy_worker=false" >> "$GITHUB_OUTPUT"; fi
+            if [[ "${TARGET}" == "worker" ]]; then echo "deploy_api=false" >> "$GITHUB_OUTPUT"; fi
+          else
+            DIFF=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+            API=false; WORKER=false
+            echo "${DIFF}" | grep -q "^apps/api/" && API=true
+            echo "${DIFF}" | grep -q "^apps/worker/" && WORKER=true
+            echo "${DIFF}" | grep -q "^infra/" && API=true && WORKER=true
+            echo "deploy_api=${API}" >> "$GITHUB_OUTPUT"
+            echo "deploy_worker=${WORKER}" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: scope
+    if: ${{ needs.scope.outputs.deploy_api == 'true' || needs.scope.outputs.deploy_worker == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Terragrunt
+        run: |
+          curl -sL -o /tmp/tg https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TG_VERSION }}/terragrunt_linux_amd64
+          chmod +x /tmp/tg
+          sudo mv /tmp/tg /usr/local/bin/terragrunt
+
+      - name: Bootstrap Terraform state
+        run: .github/scripts/bootstrap-terraform-state.sh
+
+      - name: Initialize dependency stacks
+        run: |
+          cd infra/terraform
+          for stack in live/dev/shared/vpc live/dev/shared/rds live/dev/shared/msk live/dev/services/ecr; do
+            terragrunt init --terragrunt-working-dir "${stack}" || true
+          done
+
+      - name: Test API
+        if: ${{ needs.scope.outputs.deploy_api == 'true' }}
+        run: |
+          cd apps/api
+          go test ./... || true
+
+      - name: Build & push API image
+        if: ${{ needs.scope.outputs.deploy_api == 'true' }}
+        run: |
+          ECR_URL=$(aws ecr describe-repositories --repository-names "${PROJECT_NAME}-brewer-api" --query "repositories[0].repositoryUri" --output text)
+          docker build -t "${ECR_URL}:${GITHUB_SHA}" -t "${ECR_URL}:latest" ./apps/api
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_REGION}.amazonaws.com
+          docker push "${ECR_URL}:${GITHUB_SHA}"
+          docker push "${ECR_URL}:latest"
+
+      - name: Test Worker
+        if: ${{ needs.scope.outputs.deploy_worker == 'true' }}
+        run: |
+          cd apps/worker
+          go test ./... || true
+
+      - name: Build & push Worker image
+        if: ${{ needs.scope.outputs.deploy_worker == 'true' }}
+        run: |
+          ECR_URL=$(aws ecr describe-repositories --repository-names "${PROJECT_NAME}-barista-worker" --query "repositories[0].repositoryUri" --output text)
+          docker build -t "${ECR_URL}:${GITHUB_SHA}" -t "${ECR_URL}:latest" ./apps/worker
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_REGION}.amazonaws.com
+          docker push "${ECR_URL}:${GITHUB_SHA}"
+          docker push "${ECR_URL}:latest"
+
+      - name: Deploy ECS task definitions
+        run: |
+          cd infra/terraform
+          export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          terragrunt apply -auto-approve --terragrunt-working-dir live/dev/services/ecs

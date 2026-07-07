@@ -3,23 +3,41 @@ include {
 }
 
 terraform {
-  source = "../../../modules/ecs"
+  source = "../../../../blueprints/modules/ecs"
 }
 
 dependency "vpc" {
-  config_path = "../vpc"
+  config_path = "../../shared/vpc"
+  mock_outputs = {
+    vpc_id             = "vpc-mock"
+    public_subnet_ids  = ["subnet-mock-1", "subnet-mock-2"]
+    private_subnet_ids = ["subnet-mock-3", "subnet-mock-4"]
+  }
 }
 
 dependency "rds" {
-  config_path = "../rds"
+  config_path = "../../shared/rds"
+  mock_outputs = {
+    db_endpoint = "mock.localhost"
+    db_port     = "5432"
+  }
 }
 
 dependency "ecr" {
   config_path = "../ecr"
+  mock_outputs = {
+    repository_urls = {
+      "brewer-api"    = "mock.dkr.ecr.us-east-1.amazonaws.com/brewer-api"
+      "barista-worker" = "mock.dkr.ecr.us-east-1.amazonaws.com/barista-worker"
+    }
+  }
 }
 
 dependency "msk" {
-  config_path = "../msk"
+  config_path = "../../shared/msk"
+  mock_outputs = {
+    msk_bootstrap_brokers = "mock-kafka:9092"
+  }
 }
 
 inputs = {

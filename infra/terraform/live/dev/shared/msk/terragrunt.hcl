@@ -3,11 +3,15 @@ include {
 }
 
 terraform {
-  source = "../../../modules/msk"
+  source = "../../../../blueprints/modules/msk"
 }
 
 dependency "vpc" {
   config_path = "../vpc"
+  mock_outputs = {
+    vpc_id             = "vpc-mock"
+    private_subnet_ids = ["subnet-mock-1", "subnet-mock-2"]
+  }
 }
 
 inputs = {

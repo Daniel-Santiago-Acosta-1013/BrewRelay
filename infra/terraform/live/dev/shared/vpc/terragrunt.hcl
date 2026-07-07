@@ -4,7 +4,7 @@ include {
 }
 
 terraform {
-  source = "../../../modules/vpc"
+  source = "../../../../blueprints/modules/vpc"
 }
 
 inputs = {

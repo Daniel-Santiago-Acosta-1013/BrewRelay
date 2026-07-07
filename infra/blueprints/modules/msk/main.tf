@@ -71,3 +71,7 @@ output "msk_bootstrap_brokers_tls" {
 output "msk_sg_id" {
   value = aws_security_group.msk.id
 }
+
+output "msk_cluster_arn" {
+  value = aws_msk_cluster.this.arn
+}

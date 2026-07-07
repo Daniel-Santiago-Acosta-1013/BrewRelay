@@ -3,11 +3,14 @@ include {
 }
 
 terraform {
-  source = "../../../modules/frontend"
+  source = "../../../../blueprints/modules/frontend"
 }
 
 dependency "ecs" {
   config_path = "../ecs"
+  mock_outputs = {
+    alb_dns_name = "mock-alb.us-east-1.elb.amazonaws.com"
+  }
 }
 
 inputs = {
