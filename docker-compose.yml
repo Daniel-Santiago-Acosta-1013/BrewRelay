@@ -159,6 +159,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    ports:
+      - "8081:8081"
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -169,6 +171,7 @@ services:
       KAFKA_BROKERS: "kafka:29092"
       KAFKA_TOPIC: "coffee.orders"
       KAFKA_GROUP: "barista-worker"
+      METRICS_ADDR: ":8081"
 
   frontend:
     build:

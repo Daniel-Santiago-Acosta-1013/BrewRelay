@@ -37,6 +37,11 @@ func main() {
 	}
 	defer db.Close()
 
+	// Servidor de métricas Prometheus
+	metricsAddr := getEnv("METRICS_ADDR", ":8081")
+	startMetricsServer(metricsAddr)
+	log.Printf("Worker metrics en %s/metrics", metricsAddr)
+
 	brokers := getEnv("KAFKA_BROKERS", "kafka:9092")
 	topic := getEnv("KAFKA_TOPIC", "coffee.orders")
 	group := getEnv("KAFKA_GROUP", "barista-worker")
@@ -57,15 +62,21 @@ func main() {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
 			log.Printf("read error: %v", err)
+			workerErrors.WithLabelValues("read_error").Inc()
 			time.Sleep(2 * time.Second)
 			continue
 		}
+		start := time.Now()
 		if err := process(db, m.Value); err != nil {
 			log.Printf("process error: %v", err)
+			workerErrors.WithLabelValues("process_error").Inc()
 			continue
 		}
+		workerProcessingDuration.Observe(time.Since(start).Seconds())
+		workerMessagesProcessed.Inc()
 		if err := r.CommitMessages(context.Background(), m); err != nil {
 			log.Printf("commit error: %v", err)
+			workerErrors.WithLabelValues("commit_error").Inc()
 		}
 	}
 }

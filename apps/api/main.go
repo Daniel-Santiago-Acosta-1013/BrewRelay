@@ -29,7 +29,7 @@ func main() {
 		case http.MethodGet:
 			a.listOrders(w, r)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeError(w, r, a.db, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, "method not allowed")
 		}
 	})
 	mux.HandleFunc("/orders/", a.handleOrder) // /orders/{id}/status
@@ -42,7 +42,8 @@ func main() {
 
 	addr := getEnv("HTTP_ADDR", ":8080")
 	log.Printf("BrewRelay API listening on %s", addr)
-	if err := http.ListenAndServe(addr, cors(mux)); err != nil {
+	handler := cors(metricsMiddleware(mux))
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

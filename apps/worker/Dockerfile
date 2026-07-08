@@ -8,4 +8,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/worker .
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/worker /worker
+EXPOSE 8081
 ENTRYPOINT ["/worker"]

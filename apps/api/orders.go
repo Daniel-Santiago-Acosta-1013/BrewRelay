@@ -31,11 +31,11 @@ type createOrderRequest struct {
 func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 	var req createOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "invalid body")
 		return
 	}
 	if req.CustomerName == "" || req.Drink == "" || req.Size == "" || req.Quantity <= 0 {
-		http.Error(w, "customerName, drink, size and quantity>0 are required", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "customerName, drink, size and quantity>0 are required")
 		return
 	}
 
@@ -55,13 +55,13 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		http.Error(w, "marshal error", http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorMarshal, "marshal error")
 		return
 	}
 
 	tx, err := a.db.Begin()
 	if err != nil {
-		http.Error(w, "db begin error", http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "db begin error")
 		return
 	}
 	defer tx.Rollback()
@@ -72,22 +72,22 @@ func (a *api) createOrder(w http.ResponseWriter, r *http.Request) {
 		orderID, req.CustomerName, req.Drink, req.Size, req.Quantity, total, now,
 	)
 	if err != nil {
-		http.Error(w, "insert order failed: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "insert order failed: "+err.Error())
 		return
 	}
 
-  _, err = tx.Exec(`
-    INSERT INTO outbox_events (id, aggregatetype, aggregateid, type, payload, created_at)
-    VALUES ($1, 'CoffeeOrder', $2, 'OrderCreated', $3, $4)`,
-    eventID, orderID, payloadBytes, now,
-  )
+	_, err = tx.Exec(`
+		INSERT INTO outbox_events (id, aggregatetype, aggregateid, type, payload, created_at)
+		VALUES ($1, 'CoffeeOrder', $2, 'OrderCreated', $3, $4)`,
+		eventID, orderID, payloadBytes, now,
+	)
 	if err != nil {
-		http.Error(w, "insert outbox failed: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "insert outbox failed: "+err.Error())
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		http.Error(w, "commit failed: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "commit failed: "+err.Error())
 		return
 	}
 
@@ -110,7 +110,7 @@ func (a *api) listOrders(w http.ResponseWriter, r *http.Request) {
 		SELECT id, customer_name, drink, size, quantity, total, status, created_at
 		FROM coffee_orders ORDER BY created_at DESC`)
 	if err != nil {
-		http.Error(w, "query error: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "query error: "+err.Error())
 		return
 	}
 	defer rows.Close()
@@ -119,7 +119,7 @@ func (a *api) listOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var o Order
 		if err := rows.Scan(&o.ID, &o.CustomerName, &o.Drink, &o.Size, &o.Quantity, &o.Total, &o.Status, &o.CreatedAt); err != nil {
-			http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
+			writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "scan error: "+err.Error())
 			return
 		}
 		orders = append(orders, o)

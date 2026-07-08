@@ -15,14 +15,14 @@ type BaristaNotification struct {
 
 func (a *api) listBaristaNotifications(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, r, a.db, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, "method not allowed")
 		return
 	}
 	rows, err := a.db.Query(`
 		SELECT id, order_id, message, received_at
 		FROM barista_notifications ORDER BY received_at DESC`)
 	if err != nil {
-		http.Error(w, "query error: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "query error: "+err.Error())
 		return
 	}
 	defer rows.Close()
@@ -31,7 +31,7 @@ func (a *api) listBaristaNotifications(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var n BaristaNotification
 		if err := rows.Scan(&n.ID, &n.OrderID, &n.Message, &n.ReceivedAt); err != nil {
-			http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
+			writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "scan error: "+err.Error())
 			return
 		}
 		notifs = append(notifs, n)

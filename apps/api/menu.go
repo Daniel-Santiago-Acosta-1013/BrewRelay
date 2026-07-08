@@ -74,7 +74,7 @@ func priceFor(drinkName, size string) float64 {
 // handleMenu responde con el catálogo de bebidas.
 func (a *api) handleMenu(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, r, a.db, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, "method not allowed")
 		return
 	}
 	writeJSON(w, http.StatusOK, menuItems)

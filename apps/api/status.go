@@ -11,10 +11,10 @@ import (
 
 // Transiciones de estado válidas del pedido.
 var nextStatus = map[string]string{
-	"CREATED":    "PREPARING",
-	"PREPARING":  "READY",
-	"READY":      "DELIVERED",
-	"DELIVERED":  "",
+	"CREATED":   "PREPARING",
+	"PREPARING": "READY",
+	"READY":     "DELIVERED",
+	"DELIVERED": "",
 }
 
 type updateStatusRequest struct {
@@ -35,18 +35,18 @@ func (a *api) handleOrder(w http.ResponseWriter, r *http.Request) {
 
 	orderID, err := uuid.Parse(parts[1])
 	if err != nil {
-		http.Error(w, "invalid order id", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "invalid order id")
 		return
 	}
 
 	if r.Method != http.MethodPatch {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, r, a.db, http.StatusMethodNotAllowed, ErrorMethodNotAllowed, "method not allowed")
 		return
 	}
 
 	var req updateStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "invalid body")
 		return
 	}
 
@@ -54,27 +54,27 @@ func (a *api) handleOrder(w http.ResponseWriter, r *http.Request) {
 	var currentStatus string
 	err = a.db.QueryRow(`SELECT status FROM coffee_orders WHERE id = $1`, orderID).Scan(&currentStatus)
 	if err == sql.ErrNoRows {
-		http.Error(w, "order not found", http.StatusNotFound)
+		writeError(w, r, a.db, http.StatusNotFound, ErrorNotFound, "order not found")
 		return
 	}
 	if err != nil {
-		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "db error: "+err.Error())
 		return
 	}
 
 	expected, ok := nextStatus[currentStatus]
 	if !ok {
-		http.Error(w, "current status '"+currentStatus+"' has no transitions", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "current status '"+currentStatus+"' has no transitions")
 		return
 	}
 	if req.Status != expected {
-		http.Error(w, "invalid transition: from '"+currentStatus+"' to '"+req.Status+"' (expected '"+expected+"')", http.StatusBadRequest)
+		writeError(w, r, a.db, http.StatusBadRequest, ErrorBadRequest, "invalid transition: from '"+currentStatus+"' to '"+req.Status+"' (expected '"+expected+"')")
 		return
 	}
 
 	_, err = a.db.Exec(`UPDATE coffee_orders SET status = $1 WHERE id = $2`, req.Status, orderID)
 	if err != nil {
-		http.Error(w, "update failed: "+err.Error(), http.StatusInternalServerError)
+		writeError(w, r, a.db, http.StatusInternalServerError, ErrorDB, "update failed: "+err.Error())
 		return
 	}
 

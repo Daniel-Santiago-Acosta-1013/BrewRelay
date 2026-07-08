@@ -31,6 +31,17 @@ CREATE TABLE IF NOT EXISTS barista_notifications (
   received_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- Registro de errores de la API para observabilidad
+CREATE TABLE IF NOT EXISTS api_errors (
+  id         UUID PRIMARY KEY,
+  method     VARCHAR(10)  NOT NULL,
+  path       VARCHAR(100) NOT NULL,
+  status     INT          NOT NULL,
+  error_type VARCHAR(50)  NOT NULL,
+  message    TEXT         NOT NULL,
+  created_at TIMESTAMP    NOT NULL DEFAULT now()
+);
+
 -- REPLICA IDENTITY FULL para que Debezium pueda leer valores completos en UPDATE/DELETE
 ALTER TABLE outbox_events REPLICA IDENTITY FULL;
 
